@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.33209.295
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBot", "EventBot\EventBot\EventBot.csproj", "{53DFE7C6-C427-40D5-9C9C-6BA7709B37F1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventBot", "EventBot\EventBot.csproj", "{53DFE7C6-C427-40D5-9C9C-6BA7709B37F1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
