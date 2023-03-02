@@ -23,6 +23,7 @@ namespace EventBot.Services.Bot
             _logger = logger;
             _coreModules = coreModules;
             _metaModules = metaModule;
+            _userSessionProvider = userSession;
         }
 
         public async Task Process(Update update)
@@ -64,11 +65,7 @@ namespace EventBot.Services.Bot
                 return;
             }
 
-            if (session == null)
-            {
-                await HandleErrorAsync(new NullReferenceException("Could not get session"));
-                return;
-            }
+            var session = await _userSessionProvider.GetTelegramUserSession(userId);
 
             var handled = false;
             foreach (var module in _coreModules.Concat(_metaModules))
@@ -84,6 +81,7 @@ namespace EventBot.Services.Bot
 
                 if (handled)
                 {
+                    await _userSessionProvider.SetUserSession(session);
                     return;
                 }
             }

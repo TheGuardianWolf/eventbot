@@ -5,7 +5,14 @@ using NodaTime;
 
 namespace EventBot.Services.Bot.State
 {
-    public class UserSessionProvider
+    public interface IUserSessionProvider
+    {
+        Task<UserSessionState> GetTelegramUserSession(long userId);
+        Task<UserSessionState> GetUserSession(string sessionKey, CancellationToken cancellationToken = default);
+        Task SetUserSession(UserSessionState userSession, CancellationToken cancellationToken = default);
+    }
+
+    public class UserSessionProvider : IUserSessionProvider
     {
         private const int cacheTimeHours = 24;
 
@@ -13,7 +20,7 @@ namespace EventBot.Services.Bot.State
         private readonly IClock _clock;
         private readonly IDistributedCache _distributedCache;
 
-        public UserSessionProvider(ILogger<UserSessionProvider> logger, IClock clock, IDistributedCache distributedCache) 
+        public UserSessionProvider(ILogger<UserSessionProvider> logger, IClock clock, IDistributedCache distributedCache)
         {
             _logger = logger;
             _clock = clock;
