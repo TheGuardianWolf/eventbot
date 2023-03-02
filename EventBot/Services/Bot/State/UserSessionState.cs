@@ -7,9 +7,8 @@ namespace EventBot.Services.Bot.State
 {
     public interface IUserSessionState
     {
-        string ServiceName { get; }
-        string ServiceUserId { get; }
         Instant SessionExpiry { get; }
+        string SessionKey { get; }
 
         T? GetData<T>(string key);
         bool HasData<T>(string key);
@@ -21,20 +20,18 @@ namespace EventBot.Services.Bot.State
 
     public class UserSessionState : IUserSessionState
     {
-        public string ServiceName { get; }
-        public string ServiceUserId { get; }
-        public Instant SessionExpiry { get; private set; }
 
+        public Instant SessionExpiry { get; private set; }
+        public string SessionKey { get; private set; }
         private ConcurrentDictionary<string, string> SessionData { get; set; } = new ConcurrentDictionary<string, string>();
         private readonly IClock _clock;
 
         private object _editLock = new object();
 
-        public UserSessionState(IClock clock, string serviceName, string serviceUserId, Instant sessionExpiry)
+        public UserSessionState(IClock clock, string sessionKey, Instant sessionExpiry)
         {
             _clock = clock;
-            ServiceName = serviceName;
-            ServiceUserId = serviceUserId;
+            SessionKey = sessionKey;
             SessionExpiry = sessionExpiry;
         }
 

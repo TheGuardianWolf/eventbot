@@ -1,5 +1,6 @@
 ﻿using EventBot.Data.Bot;
 using Microsoft.Extensions.Caching.Distributed;
+using Newtonsoft.Json;
 using NodaTime;
 
 namespace EventBot.Services.Bot.State
@@ -19,14 +20,14 @@ namespace EventBot.Services.Bot.State
             _distributedCache = distributedCache;
         }
 
-        public UserSessionState GetTelegramUserSession(long userId)
+        public async Task<UserSessionState> GetTelegramUserSession(long userId)
         {
             var serviceName = ServiceName.Telegram;
             var serviceUserId = userId.ToString();
 
             var sessionKey = CreateSessionKey(serviceName, serviceUserId);
 
-            return GetUserSession(sessionKey);
+            return await GetUserSession(sessionKey);
         }
 
         private string CreateSessionKey(string serviceName, string userId)
@@ -34,12 +35,50 @@ namespace EventBot.Services.Bot.State
             return $"{serviceName}.{userId}";
         }
 
-        private UserSessionState GetUserSession(string sessionKey)
+        private async Task<UserSessionState> GetUserSession(string sessionKey, CancellationToken cancellationToken = default)
         {
+            UserSessionState? state = null;
+
             // Gets if exists
+            try
+            {
+                var cachedSession = await _distributedCache.GetStringAsync(sessionKey, cancellationToken);
+                if (cachedSession != null)
+                {
+                    var cachedState = JsonConvert.DeserializeObject<UserSessionState>(cachedSession);
+
+                    if (cachedState != null && !cachedState.IsSessionExpired())
+                    {
+                        state = cachedState;
+                    }
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Couldn't deserialise key {} from cache", sessionKey);
+            }
 
             // Creates if not exists
+            try
+            {
+                if (state != null)
+                {
+                    state.RefreshSessionExpiry();
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Session expired for key {} during refresh", sessionKey);
+                state = null;
+            }
 
+            if (state == null)
+            {
+                state = new UserSessionState(
+                    _clock, sessionKey, _clock.GetCurrentInstant() + Duration.FromHours(cacheTimeHours));
+            }
+
+            return state;
         }
     }
 }
