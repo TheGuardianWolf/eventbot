@@ -52,10 +52,10 @@ namespace EventBot.Services.Bot.State
 
         public void RefreshSessionExpiry(Duration duration)
         {
-            if (IsSessionExpired())
-            {
-                throw new InvalidOperationException($"Session has expired at epoch {SessionExpiry}");
-            }
+            //if (IsSessionExpired())
+            //{
+            //    throw new InvalidOperationException($"Session has expired at epoch {SessionExpiry}");
+            //}
 
             // Slide by 24h
             lock (_editLock)

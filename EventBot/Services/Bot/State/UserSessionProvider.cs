@@ -30,12 +30,19 @@ namespace EventBot.Services.Bot.State
             return await GetUserSession(sessionKey);
         }
 
+        public async Task SetUserSession(UserSessionState userSession, CancellationToken cancellationToken = default)
+        {
+            userSession.RefreshSessionExpiry();
+
+            await _distributedCache.SetStringAsync(userSession.SessionKey, JsonConvert.SerializeObject(userSession), cancellationToken);
+        }
+
         private string CreateSessionKey(string serviceName, string userId)
         {
             return $"{serviceName}.{userId}";
         }
 
-        private async Task<UserSessionState> GetUserSession(string sessionKey, CancellationToken cancellationToken = default)
+        public async Task<UserSessionState> GetUserSession(string sessionKey, CancellationToken cancellationToken = default)
         {
             UserSessionState? state = null;
 
@@ -58,25 +65,13 @@ namespace EventBot.Services.Bot.State
                 _logger.LogWarning(ex, "Couldn't deserialise key {} from cache", sessionKey);
             }
 
-            // Creates if not exists
-            try
-            {
-                if (state != null)
-                {
-                    state.RefreshSessionExpiry();
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                _logger.LogWarning(ex, "Session expired for key {} during refresh", sessionKey);
-                state = null;
-            }
-
             if (state == null)
             {
                 state = new UserSessionState(
                     _clock, sessionKey, _clock.GetCurrentInstant() + Duration.FromHours(cacheTimeHours));
             }
+
+            await SetUserSession(state);
 
             return state;
         }
