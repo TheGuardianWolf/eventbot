@@ -1,5 +1,6 @@
 ﻿using EventBot.Data.Bot;
 using EventBot.Data.Templates;
+using EventBot.Services.Bot.State;
 using Microsoft.Extensions.Options;
 using System.Text.RegularExpressions;
 using Telegram.Bot;
@@ -24,22 +25,28 @@ namespace EventBot.Services.Bot.Modules
             _eventService = eventService;
         }
 
-        public async Task<bool> Process(Update update)
+        public async Task<bool> Process(Update update, IUserSessionState userSessionState)
         {
+            PlanEventState previousState;
+            if (userSessionState.GetLastProcessedModule() == typeof(PlanEventModule).AssemblyQualifiedName)
+            {
+
+            }
+
             switch (update.Type)
             {
                 case UpdateType.Message:
-                    return await BotOnMessageReceived(update.Message!);
+                    return await BotOnMessageReceived(update.Message!, previousState);
                 case UpdateType.ChosenInlineResult:
-                    return await BotOnChosenInlineResultReceived(update.ChosenInlineResult!);
+                    return await BotOnChosenInlineResultReceived(update.ChosenInlineResult!, previousState);
                 case UpdateType.CallbackQuery:
-                    return await BotOnCallbackQueryReceived(update.CallbackQuery!);
+                    return await BotOnCallbackQueryReceived(update.CallbackQuery!, previousState);
             };
 
             return false;
         }
 
-        private async Task<bool> BotOnMessageReceived(Message message)
+        private async Task<bool> BotOnMessageReceived(Message message, IUserSessionState userSessionState)
         {
             if (message.Chat.Type != ChatType.Private)
             {
@@ -61,7 +68,8 @@ namespace EventBot.Services.Bot.Modules
                 return false;
             }
 
-            await StartPlanEvent(message);
+            
+            await ProcessPlanEvent(message, previousState);
             return true;
         }
 
@@ -108,7 +116,7 @@ namespace EventBot.Services.Bot.Modules
             return false;
         }
 
-        private async Task StartPlanEvent(Message message)
+        private async Task ProcessPlanEvent(Message message)
         {
             // Choose a name for your event
             var stepInfo = string.Format(BotText.PlanEventStartInfo);
@@ -253,6 +261,14 @@ namespace EventBot.Services.Bot.Modules
                     callbackQueryId: callbackQuery.Id,
                     text: $"Your account is not linked to a Covid pass, please message @{_tgConfig.BotUsername} to link.");
             }
+        }
+
+        protected enum PlanEventState
+        {
+            QueryName,
+            QueryDate,
+            QueryTime,
+            QueryPlace
         }
     }
 }

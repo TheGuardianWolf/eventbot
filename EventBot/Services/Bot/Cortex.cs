@@ -81,6 +81,7 @@ namespace EventBot.Services.Bot
 
                 if (handled)
                 {
+                    session.SetLastHandledModule(module.GetType().AssemblyQualifiedName);
                     await _userSessionProvider.SetUserSession(session);
                     return;
                 }
@@ -105,6 +106,24 @@ namespace EventBot.Services.Bot
 
             _logger?.LogDebug("HandleError: {ErrorMessage}", ErrorMessage);
             return Task.CompletedTask;
+        }
+    }
+
+    public static class UserSessionStateExtensions
+    {
+        private const string _lastHandledModuleKey = "_lastHandledModule";
+        public static string? GetLastHandledModule(this IUserSessionState userSessionState)
+        {
+            if (!userSessionState.HasData(_lastHandledModuleKey)) 
+            { 
+                return null;
+            }
+            return userSessionState.GetData<string>(_lastHandledModuleKey);
+        }
+
+        public static void SetLastHandledModule(this IUserSessionState userSessionState, string moduleName)
+        {
+            userSessionState.SetData(_lastHandledModuleKey, moduleName);
         }
     }
 

@@ -11,7 +11,7 @@ namespace EventBot.Services.Bot.State
         string SessionKey { get; }
 
         T? GetData<T>(string key);
-        bool HasData<T>(string key);
+        bool HasData(string key);
         void RefreshSessionExpiry();
         bool IsSessionExpired();
         void RemoveData(string key);
@@ -52,11 +52,6 @@ namespace EventBot.Services.Bot.State
 
         public void RefreshSessionExpiry(Duration duration)
         {
-            //if (IsSessionExpired())
-            //{
-            //    throw new InvalidOperationException($"Session has expired at epoch {SessionExpiry}");
-            //}
-
             // Slide by 24h
             lock (_editLock)
             {
@@ -64,23 +59,13 @@ namespace EventBot.Services.Bot.State
             }
         }
 
-        public bool HasData<T>(string key)
+        public bool HasData(string key)
         {
-            if (IsSessionExpired())
-            {
-                throw new InvalidOperationException($"Session has expired at epoch {SessionExpiry}");
-            }
-
             return SessionData.ContainsKey(key);
         }
 
         public T? GetData<T>(string key)
         {
-            if (IsSessionExpired())
-            {
-                throw new InvalidOperationException($"Session has expired at epoch {SessionExpiry}");
-            }
-
             var val = JsonConvert.DeserializeObject<T>(SessionData[key]);
 
             return val;
@@ -88,21 +73,11 @@ namespace EventBot.Services.Bot.State
 
         public void SetData<T>(string key, T value)
         {
-            if (IsSessionExpired())
-            {
-                throw new InvalidOperationException($"Session has expired at epoch {SessionExpiry}");
-            }
-
             SessionData[key] = JsonConvert.SerializeObject(value);
         }
 
         public void RemoveData(string key)
         {
-            if (IsSessionExpired())
-            {
-                throw new InvalidOperationException($"Session has expired at epoch {SessionExpiry}");
-            }
-
             SessionData.Remove(key, out _);
         }
     }
