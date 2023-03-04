@@ -1,4 +1,5 @@
-﻿using EventBot.Services.Bot.Modules;
+﻿using EventBot.Data.Events;
+using EventBot.Services.Bot.Modules;
 using EventBot.Services.Bot.State;
 using NodaTime;
 using System.Linq;
@@ -14,9 +15,11 @@ namespace EventBot.Services.Bot
         private readonly IEnumerable<IBotUpdateModule> _coreModules;
         private readonly IEnumerable<IBotMetaUpdateModule> _metaModules;
         private readonly IUserSessionProvider _userSessionProvider;
+        private readonly IEventService _eventService;
 
         public Cortex(ILogger<Cortex> logger, 
-            IUserSessionProvider userSession, 
+            IUserSessionProvider userSession,
+            IEventService eventService,
             IEnumerable<IBotUpdateModule> coreModules, 
             IEnumerable<IBotMetaUpdateModule> metaModule)
         {
@@ -24,26 +27,32 @@ namespace EventBot.Services.Bot
             _coreModules = coreModules;
             _metaModules = metaModule;
             _userSessionProvider = userSession;
+            _eventService = eventService;
         }
 
         public async Task Process(Update update)
         {
             // Grab the session for each update
             long userId = 0;
+            string userName = "";
 
             switch (update.Type)
             {
                 case UpdateType.Message:
                     userId = update.Message!.From!.Id;
+                    userName = update.Message!.From!.Username ?? "";
                     break;
                 case UpdateType.InlineQuery:
                     userId = update.InlineQuery!.From!.Id;
+                    userName = update.InlineQuery!.From!.Username ?? "";
                     break;
                 case UpdateType.ChosenInlineResult:
                     userId = update.ChosenInlineResult!.From!.Id;
+                    userName = update.ChosenInlineResult!.From!.Username ?? "";
                     break;
                 case UpdateType.CallbackQuery:
                     userId = update.CallbackQuery!.From!.Id;
+                    userName = update.CallbackQuery!.From!.Username ?? "";
                     break;
                 case UpdateType.EditedMessage:
                 case UpdateType.ChannelPost:
@@ -66,6 +75,18 @@ namespace EventBot.Services.Bot
             }
 
             var session = await _userSessionProvider.GetTelegramUserSession(userId);
+            var user = await _eventService.GetTelegramUser(userId);
+            if (user == null)
+            {
+                user = await _eventService.CreateTelegramUser(userId, userName);
+            }
+            if (user.UserName != userName)
+            {
+                user.UserName = userName;
+                await _eventService.UpdateUser(user);
+            }
+
+            session.SetEventUser(user);
 
             var handled = false;
             foreach (var module in _coreModules.Concat(_metaModules))
@@ -112,18 +133,34 @@ namespace EventBot.Services.Bot
     public static class UserSessionStateExtensions
     {
         private const string _lastHandledModuleKey = "_lastHandledModule";
+        private const string _eventUserKey = "_eventUser";
+
         public static string? GetLastHandledModule(this IUserSessionState userSessionState)
         {
             if (!userSessionState.HasData(_lastHandledModuleKey)) 
             { 
                 return null;
             }
-            return userSessionState.GetData<string>(_lastHandledModuleKey);
+            return userSessionState.GetData<string?>(_lastHandledModuleKey);
         }
 
-        public static void SetLastHandledModule(this IUserSessionState userSessionState, string moduleName)
+        public static void SetLastHandledModule(this IUserSessionState userSessionState, string? moduleName)
         {
             userSessionState.SetData(_lastHandledModuleKey, moduleName);
+        }
+
+        public static EventUser? GetEventUser(this IUserSessionState userSessionState)
+        {
+            if (!userSessionState.HasData(_eventUserKey))
+            {
+                return null;
+            }
+            return userSessionState.GetData<EventUser>(_eventUserKey);
+        }
+
+        public static void SetEventUser(this IUserSessionState userSessionState, EventUser eventUser)
+        {
+            userSessionState.SetData(_eventUserKey, eventUser);
         }
     }
 

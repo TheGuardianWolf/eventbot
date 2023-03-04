@@ -1,4 +1,5 @@
 ﻿using EventBot.Data.Bot;
+using EventBot.Data.Events;
 using EventBot.Data.Templates;
 using EventBot.Services.Bot.State;
 using Microsoft.Extensions.Options;
@@ -12,6 +13,9 @@ namespace EventBot.Services.Bot.Modules
 {
     public class PlanEventModule : IBotUpdateModule, IBotInlineQueryReceiver
     {
+        private const string _planEventStateKey = "planEventState";
+        private const string _planEventDataKey = "planEventData";
+
         private readonly ILogger _logger;
         private readonly ITelegramBotClient _client;
         private readonly TelegramConfiguration _tgConfig;
@@ -27,16 +31,21 @@ namespace EventBot.Services.Bot.Modules
 
         public async Task<bool> Process(Update update, IUserSessionState userSessionState)
         {
-            PlanEventState previousState;
-            if (userSessionState.GetLastProcessedModule() == typeof(PlanEventModule).AssemblyQualifiedName)
+            if (userSessionState.GetLastHandledModule() != typeof(PlanEventModule).AssemblyQualifiedName)
             {
+                return false;
+            }
 
+            PlanEventState previousState = PlanEventState.GetName;
+            if (userSessionState.HasData(_planEventStateKey))
+            {
+                previousState = userSessionState.GetData<PlanEventState>(_planEventStateKey);
             }
 
             switch (update.Type)
             {
                 case UpdateType.Message:
-                    return await BotOnMessageReceived(update.Message!, previousState);
+                    return await BotOnMessageReceived(update.Message!, previousState, userSessionState);
                 case UpdateType.ChosenInlineResult:
                     return await BotOnChosenInlineResultReceived(update.ChosenInlineResult!, previousState);
                 case UpdateType.CallbackQuery:
@@ -46,7 +55,7 @@ namespace EventBot.Services.Bot.Modules
             return false;
         }
 
-        private async Task<bool> BotOnMessageReceived(Message message, IUserSessionState userSessionState)
+        private async Task<bool> BotOnMessageReceived(Message message, PlanEventState previousState, IUserSessionState session)
         {
             if (message.Chat.Type != ChatType.Private)
             {
@@ -69,7 +78,7 @@ namespace EventBot.Services.Bot.Modules
             }
 
             
-            await ProcessPlanEvent(message, previousState);
+            await ProcessPlanEvent(message, previousState, session);
             return true;
         }
 
@@ -104,7 +113,7 @@ namespace EventBot.Services.Bot.Modules
             return await Task.FromResult(results);
         }
 
-        private async Task<bool> BotOnChosenInlineResultReceived(ChosenInlineResult chosenInlineResult)
+        private async Task<bool> BotOnChosenInlineResultReceived(ChosenInlineResult chosenInlineResult, PlanEventState planEventState)
         {
             switch (chosenInlineResult.ResultId)
             {
@@ -116,16 +125,91 @@ namespace EventBot.Services.Bot.Modules
             return false;
         }
 
-        private async Task ProcessPlanEvent(Message message)
+        private async Task SendErrorMessage(Message message, string text)
         {
-            // Choose a name for your event
-            var stepInfo = string.Format(BotText.PlanEventStartInfo);
-
             await _client.SendTextMessageAsync(chatId: message.Chat.Id,
-                text: stepInfo.Replace(".", "\\."),
-                parseMode: ParseMode.MarkdownV2);
+                            text: text.Replace(".", "\\."),
+                            parseMode: ParseMode.MarkdownV2);
+        }
 
-            // Choose the date
+        private async Task ProcessPlanEvent(Message message, PlanEventState previousState, IUserSessionState session)
+        {
+            var calendarEvent = new CalendarEvent();
+            if (session.HasData(_planEventDataKey))
+            {
+                calendarEvent = session.GetData<CalendarEvent>(_planEventDataKey);
+            }
+
+            switch (previousState)
+            {
+                case PlanEventState.Start:
+                    {
+                        // Choose a name for your event
+                        var stepInfo = string.Format(BotText.PlanEventStartInfo);
+
+                        await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+                            text: stepInfo.Replace(".", "\\."),
+                            parseMode: ParseMode.MarkdownV2);
+                    }
+                    break;
+                case PlanEventState.GetName: 
+                    {
+                        var messageText = message.Text!;
+                        if (string.IsNullOrWhiteSpace(messageText))
+                        {
+                            await SendErrorMessage(message, BotText.PlanEventInvalidNameError);
+                            break;
+                        }
+
+                        // Accept name, build partial calendar event
+                        var user = session.GetEventUser() ?? throw new NullReferenceException();
+                        calendarEvent = new CalendarEvent
+                        {
+                            ServiceEventId = message.Chat.Id.ToString(),
+                            ServiceContextId = message.Chat.LinkedChatId.ToString(),
+                            EventUserId = user.Id,
+                            EventName = messageText
+                        };
+                        session.SetData(_planEventDataKey, calendarEvent);
+
+                        // Choose the date if accepted
+                        var stepInfo = string.Format(BotText.PlanEventSelectDateInfo);
+
+                        await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+                            text: stepInfo.Replace(".", "\\."),
+                            parseMode: ParseMode.MarkdownV2);
+
+
+                    }
+                    break;
+                case PlanEventState.GetDate:
+                    {
+                        
+                    }
+                    break;
+                case PlanEventState.GetTime:
+                    {
+                        // Choose the date
+                        var stepInfo = string.Format(BotText.PlanEventSelectTimeInfo);
+
+                        await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+                            text: stepInfo.Replace(".", "\\."),
+                            parseMode: ParseMode.MarkdownV2);
+                    }
+                    break;
+                case PlanEventState.GetLocation:
+                    {
+                        // Choose the location
+                        var stepInfo = string.Format(BotText.PlanEventSelectLocationInfo);
+
+                        await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+                            text: stepInfo.Replace(".", "\\."),
+                            parseMode: ParseMode.MarkdownV2);
+                    }
+                    break;
+            }
+
+            
 
 
             // Choose the time
@@ -178,7 +262,7 @@ namespace EventBot.Services.Bot.Modules
                 replyMarkup: markup);
         }
 
-        private async Task<bool> BotOnCallbackQueryReceived(CallbackQuery callbackQuery)
+        private async Task<bool> BotOnCallbackQueryReceived(CallbackQuery callbackQuery, PlanEventState planEventState)
         {
             switch (callbackQuery.Data)
             {
@@ -265,10 +349,11 @@ namespace EventBot.Services.Bot.Modules
 
         protected enum PlanEventState
         {
-            QueryName,
-            QueryDate,
-            QueryTime,
-            QueryPlace
+            Start,
+            GetName,
+            GetDate,
+            GetTime,
+            GetLocation
         }
     }
 }

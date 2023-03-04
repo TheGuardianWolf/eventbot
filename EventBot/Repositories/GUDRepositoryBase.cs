@@ -32,14 +32,14 @@ namespace EventBot.Repositories
             return entity;
         }
 
-        public async Task<bool> Update(T entity)
+        public async Task<Guid> Update(T entity)
         {
             var result = await _collection.ReplaceOneAsync(c => c.Id == entity.Id, entity, new ReplaceOptions
             {
                 IsUpsert = true
             });
 
-            return result is not null;
+            return result.UpsertedId.AsGuid;
         }
 
         public async Task<bool> Delete(Guid id)

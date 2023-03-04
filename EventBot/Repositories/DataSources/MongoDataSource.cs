@@ -4,7 +4,7 @@ namespace EventBot.Repositories.DataSources
 {
     public interface IMongoDataType
     {
-        Guid Id { get; set; }
+        string Id { get; set; }
     }
 
     public interface IMongoDataSource

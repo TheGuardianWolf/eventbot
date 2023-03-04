@@ -1,4 +1,5 @@
-﻿using Telegram.Bot.Types;
+﻿using EventBot.Services.Bot.State;
+using Telegram.Bot.Types;
 using Telegram.Bot.Types.InlineQueryResults;
 
 namespace EventBot.Services.Bot.Modules

@@ -7,10 +7,10 @@ namespace EventBot.Repositories
     public interface IEventUserRepository
     {
         Task<EventUser?> Get(Guid id);
-        Task<bool> Update(EventUser entity);
+        Task<Guid> Update(EventUser entity);
         Task<bool> Delete(Guid id);
         Task<EventUser?> GetByAccessToken(string accessToken);
-        Task<EventUser?> GetByServiceId(string serviceId, string userId);
+        Task<EventUser?> GetByServiceName(string serviceName, string userId);
     }
 
     public class EventUserRepository : GUDRepositoryBase<EventUser>, IEventUserRepository
@@ -31,9 +31,9 @@ namespace EventBot.Repositories
             return entity;
         }
 
-        public async Task<EventUser?> GetByServiceId(string serviceId, string userId)
+        public async Task<EventUser?> GetByServiceName(string serviceName, string userId)
         {
-            var cursor = await _collection.FindAsync(c => c.ServiceId == serviceId && c.UserId == userId);
+            var cursor = await _collection.FindAsync(c => c.ServiceName == serviceName && c.UserId == userId);
             var entity = await cursor.FirstOrDefaultAsync();
 
             return entity;

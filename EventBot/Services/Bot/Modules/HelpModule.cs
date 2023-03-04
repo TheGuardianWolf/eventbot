@@ -1,5 +1,6 @@
 ﻿using EventBot.Data.Bot;
 using EventBot.Data.Templates;
+using EventBot.Services.Bot.State;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -23,7 +24,7 @@ namespace EventBot.Services.Bot.Modules
             _tgConfig = tgConfig.Value;
         }
 
-        public async Task<bool> Process(Update update)
+        public async Task<bool> Process(Update update, IUserSessionState userSessionState)
         {
             switch (update.Type)
             {

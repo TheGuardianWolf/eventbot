@@ -22,5 +22,7 @@ Usage:
 **Date:** {1}
 **Location:** {2}
 **Owner:** {3}";
+
+        public const string PlanEventInvalidNameError = @"The event should have a name that is not blank, please try again.";
     }
 }
