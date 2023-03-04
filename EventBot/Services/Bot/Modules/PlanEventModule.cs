@@ -1,6 +1,7 @@
 ﻿using EventBot.Data.Bot;
 using EventBot.Data.Events;
 using EventBot.Data.Templates;
+using EventBot.Services.Bot.Helpers;
 using EventBot.Services.Bot.State;
 using Microsoft.Extensions.Options;
 using System.Text.RegularExpressions;
@@ -8,6 +9,7 @@ using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InlineQueryResults;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace EventBot.Services.Bot.Modules
 {
@@ -20,6 +22,8 @@ namespace EventBot.Services.Bot.Modules
         private readonly ITelegramBotClient _client;
         private readonly TelegramConfiguration _tgConfig;
         private readonly IEventService _eventService;
+        private readonly CalendarMarkupHelper _calendarHelper = new CalendarMarkupHelper();
+        private readonly TimeMarkupHelper _timeMarkupHelper = new TimeMarkupHelper();
 
         public PlanEventModule(IOptions<TelegramConfiguration> tgConfig, ITelegramBotClient client, ILogger<PlanEventModule> logger, IEventService eventService)
         {
@@ -77,37 +81,41 @@ namespace EventBot.Services.Bot.Modules
                 return false;
             }
 
-            
+
             await ProcessPlanEvent(message, previousState, session);
             return true;
         }
 
         public async Task<IEnumerable<InlineQueryResult>> BotOnInlineQueryReceived(InlineQuery inlineQuery)
         {
-            var text = new InputTextMessageContent(
-                        string.Format(BotText.CovidPassCheck,
-                        TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Program.NZTime).ToString("d"),
-                        inlineQuery.From.Username,
-                        _tgConfig.BotUsername,
-                        "No valid responses").Replace(".", "\\.").Replace("-", "\\-")
-                    );
-            text.ParseMode = ParseMode.MarkdownV2;
-            var response = new InlineQueryResultArticle(
-                    id: "/startcheckin",
-                    title: "Request Covid Pass status",
-                    inputMessageContent: text
-                ); ;
+            // Plan new event
 
-            response.ReplyMarkup = new InlineKeyboardMarkup(new[]
-            {
-                new []
-                {
-                    InlineKeyboardButton.WithCallbackData("Check in", $"/checkin")
-                }
-             });
+            // Share event code
+
+
+            //var text = new InputTextMessageContent(
+            //            string.Format(BotText.CovidPassCheck,
+            //            TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Program.NZTime).ToString("d"),
+            //            inlineQuery.From.Username,
+            //            _tgConfig.BotUsername,
+            //            "No valid responses").Replace(".", "\\.").Replace("-", "\\-")
+            //        );
+            //text.ParseMode = ParseMode.MarkdownV2;
+            //var response = new InlineQueryResultArticle(
+            //        id: "/startcheckin",
+            //        title: "Request Covid Pass status",
+            //        inputMessageContent: text
+            //    ); ;
+
+            //response.ReplyMarkup = new InlineKeyboardMarkup(new[]
+            //{
+            //    new []
+            //    {
+            //        InlineKeyboardButton.WithCallbackData("Check in", $"/checkin")
+            //    }
+            // });
 
             InlineQueryResult[] results = {
-                response
             };
 
             return await Task.FromResult(results);
@@ -117,9 +125,9 @@ namespace EventBot.Services.Bot.Modules
         {
             switch (chosenInlineResult.ResultId)
             {
-                case "/startcheckin":
-                    await CreatePollForCheckIn(chosenInlineResult);
-                    return true;
+                //case "/startcheckin":
+                //    await CreatePollForCheckIn(chosenInlineResult);
+                //    return true;
             }
 
             return false;
@@ -147,12 +155,17 @@ namespace EventBot.Services.Bot.Modules
                         // Choose a name for your event
                         var stepInfo = string.Format(BotText.PlanEventStartInfo);
 
-                        await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+                        var sentMessage = await _client.SendTextMessageAsync(chatId: message.Chat.Id,
                             text: stepInfo.Replace(".", "\\."),
                             parseMode: ParseMode.MarkdownV2);
+
+                        if (sentMessage != null)
+                        {
+                            session.SetData(_planEventStateKey, PlanEventState.GetName);
+                        }
                     }
                     break;
-                case PlanEventState.GetName: 
+                case PlanEventState.GetName:
                     {
                         var messageText = message.Text!;
                         if (string.IsNullOrWhiteSpace(messageText))
@@ -165,9 +178,8 @@ namespace EventBot.Services.Bot.Modules
                         var user = session.GetEventUser() ?? throw new NullReferenceException();
                         calendarEvent = new CalendarEvent
                         {
-                            ServiceEventId = message.Chat.Id.ToString(),
                             ServiceContextId = message.Chat.LinkedChatId.ToString(),
-                            EventUserId = user.Id,
+                            EventOwnerId = user.Id,
                             EventName = messageText
                         };
                         session.SetData(_planEventDataKey, calendarEvent);
@@ -175,177 +187,151 @@ namespace EventBot.Services.Bot.Modules
                         // Choose the date if accepted
                         var stepInfo = string.Format(BotText.PlanEventSelectDateInfo);
 
-                        await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+                        var sentMessage = await _client.SendTextMessageAsync(chatId: message.Chat.Id,
                             text: stepInfo.Replace(".", "\\."),
-                            parseMode: ParseMode.MarkdownV2);
+                            parseMode: ParseMode.MarkdownV2,
+                            replyMarkup: _calendarHelper.GetCalendarKeyboardMarkup());
 
-
+                        if (sentMessage != null)
+                        {
+                            session.SetData(_planEventStateKey, PlanEventState.GetDate);
+                        }
                     }
                     break;
                 case PlanEventState.GetDate:
                     {
-                        
+                        // Choose the Time
+                        var stepInfo = string.Format(BotText.PlanEventSelectTimeInfo);
+
+                        var sentMessage = await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+                            text: stepInfo.Replace(".", "\\."),
+                            parseMode: ParseMode.MarkdownV2,
+                            replyMarkup: _timeMarkupHelper.GetTimeKeyboardMarkup());
+
+                        if (sentMessage != null)
+                        {
+                            session.SetData(_planEventStateKey, PlanEventState.GetTime);
+                        }
                     }
                     break;
                 case PlanEventState.GetTime:
                     {
-                        // Choose the date
-                        var stepInfo = string.Format(BotText.PlanEventSelectTimeInfo);
 
-                        await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+                        // Choose the location
+                        var stepInfo = string.Format(BotText.PlanEventSelectLocationInfo);
+
+                        var sentMessage = await _client.SendTextMessageAsync(chatId: message.Chat.Id,
                             text: stepInfo.Replace(".", "\\."),
                             parseMode: ParseMode.MarkdownV2);
+
+                        if (sentMessage != null)
+                        {
+                            session.SetData(_planEventStateKey, PlanEventState.GetLocation);
+                        }
                     }
                     break;
                 case PlanEventState.GetLocation:
                     {
-                        // Choose the location
-                        var stepInfo = string.Format(BotText.PlanEventSelectLocationInfo);
+                        var stepInfo = string.Format(BotText.PlanEventSelectDoneInfo);
 
-                        await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+                        var sentMessage = await _client.SendTextMessageAsync(chatId: message.Chat.Id,
                             text: stepInfo.Replace(".", "\\."),
                             parseMode: ParseMode.MarkdownV2);
+
+                        if (sentMessage != null)
+                        {
+                            session.RemoveData(_planEventStateKey);
+                        }
                     }
                     break;
             }
-
             
-
-
-            // Choose the time
-
-
-            // Choose the place
-
-
-            // Provide event
-        }
-
-        private async Task CreatePollForCheckIn(ChosenInlineResult chosenInlineResult)
-        {
-            var poll = await _covidPassPollService.NewPoll(chosenInlineResult.InlineMessageId!, chosenInlineResult.From.Id, chosenInlineResult.From?.Username ?? "");
-
-            await SyncPassPollInfoWithMessage(poll);
-        }
-
-        private async Task SyncPassPollInfoWithMessage(PollInfo pollInfo)
-        {
-            _logger.LogInformation("Updating poll {inlineMessageId}", pollInfo.InlineMessageId);
-
-            var markup = new InlineKeyboardMarkup(new[]
-            {
-                new []
-                {
-                    InlineKeyboardButton.WithCallbackData("Check in", $"/checkin")
-                }
-             });
-
-            var notarisedParticipantIds = await _covidPassLinkerService.FilterNotarisedUsers(pollInfo.Participants.Select(x => x.Id));
-
-            var participantsListString = string.Join(", ", pollInfo.Participants.Select(x => $"@{x.Username}{(notarisedParticipantIds.Contains(x.Id) ? " ✔" : "")}".Replace("_", "\\_")));
-
-            if (!pollInfo.Participants.Any())
-            {
-                participantsListString = "No valid responses";
-            }
-
-            await _client.EditMessageTextAsync(
-                inlineMessageId: pollInfo.InlineMessageId,
-                text: string.Format(
-                    BotText.CovidPassCheck,
-                    TimeZoneInfo.ConvertTimeFromUtc(pollInfo.CreationDate, Program.NZTime).ToString("d"),
-                    pollInfo.Creator.Username,
-                    _tgConfig.BotUsername,
-                    participantsListString
-                ).Replace(".", "\\.").Replace("-", "\\-"),
-                parseMode: ParseMode.MarkdownV2,
-                replyMarkup: markup);
         }
 
         private async Task<bool> BotOnCallbackQueryReceived(CallbackQuery callbackQuery, PlanEventState planEventState)
         {
             switch (callbackQuery.Data)
             {
-                case "/checkin":
-                    await CheckIn(callbackQuery);
-                    return true;
+                //case "/checkin":
+                //    await CheckIn(callbackQuery);
+                //    return true;
             }
 
             return false;
         }
 
-        public async Task Check(Message message)
-        {
-            var confirmKeyboard = new InlineKeyboardMarkup(new[]
-            {
-                new []
-                {
-                    InlineKeyboardButton.WithSwitchInlineQuery("Check Covid pass status"),
-                }
-             });
+        //public async Task Check(Message message)
+        //{
+        //    var confirmKeyboard = new InlineKeyboardMarkup(new[]
+        //    {
+        //        new []
+        //        {
+        //            InlineKeyboardButton.WithSwitchInlineQuery("Check Covid pass status"),
+        //        }
+        //     });
 
-            await _client.SendTextMessageAsync(chatId: message.Chat.Id,
-                                                text: string.Format(BotText.CheckInfo,
-                                                    _tgConfig.BotUsername).Replace(".", "\\."),
-                                                parseMode: ParseMode.MarkdownV2,
-                                                replyMarkup: confirmKeyboard);
-        }
+        //    await _client.SendTextMessageAsync(chatId: message.Chat.Id,
+        //                                        text: string.Format(BotText.CheckInfo,
+        //                                            _tgConfig.BotUsername).Replace(".", "\\."),
+        //                                        parseMode: ParseMode.MarkdownV2,
+        //                                        replyMarkup: confirmKeyboard);
+        //}
 
-        public async Task CheckIn(CallbackQuery callbackQuery)
-        {
-            static async Task FailedCheckIn(ITelegramBotClient client, CallbackQuery callbackQuery)
-            {
-                await client.AnswerCallbackQueryAsync(
-                           callbackQueryId: callbackQuery.Id,
-                           text: "An error has occured :(");
-            }
+        //public async Task CheckIn(CallbackQuery callbackQuery)
+        //{
+        //    static async Task FailedCheckIn(ITelegramBotClient client, CallbackQuery callbackQuery)
+        //    {
+        //        await client.AnswerCallbackQueryAsync(
+        //                   callbackQueryId: callbackQuery.Id,
+        //                   text: "An error has occured :(");
+        //    }
 
-            if (callbackQuery.InlineMessageId is null)
-            {
-                await FailedCheckIn(_client, callbackQuery);
-                return;
-            }
+        //    if (callbackQuery.InlineMessageId is null)
+        //    {
+        //        await FailedCheckIn(_client, callbackQuery);
+        //        return;
+        //    }
 
-            var isUserLinked = await _covidPassLinkerService.IsUserLinked(callbackQuery.From.Id);
+        //    var isUserLinked = await _covidPassLinkerService.IsUserLinked(callbackQuery.From.Id);
 
-            // Check if sender is verified
-            if (isUserLinked)
-            {
-                // Create check existing poll
-                var poll = await _covidPassPollService.GetPoll(callbackQuery.InlineMessageId);
+        //    // Check if sender is verified
+        //    if (isUserLinked)
+        //    {
+        //        // Create check existing poll
+        //        var poll = await _covidPassPollService.GetPoll(callbackQuery.InlineMessageId);
 
-                if (poll is null)
-                {
-                    await FailedCheckIn(_client, callbackQuery);
-                    return;
-                }
+        //        if (poll is null)
+        //        {
+        //            await FailedCheckIn(_client, callbackQuery);
+        //            return;
+        //        }
 
-                var userId = callbackQuery.From.Id;
-                var username = callbackQuery.From.Username ?? "";
-                if (!poll.Participants.Any(x => x.Id == userId && x.Username == username))
-                {
-                    var updatedPoll = await _covidPassPollService.AddParticipantToPoll(callbackQuery.InlineMessageId, callbackQuery.From.Id, callbackQuery.From.Username ?? "");
+        //        var userId = callbackQuery.From.Id;
+        //        var username = callbackQuery.From.Username ?? "";
+        //        if (!poll.Participants.Any(x => x.Id == userId && x.Username == username))
+        //        {
+        //            var updatedPoll = await _covidPassPollService.AddParticipantToPoll(callbackQuery.InlineMessageId, callbackQuery.From.Id, callbackQuery.From.Username ?? "");
 
-                    if (updatedPoll is null)
-                    {
-                        await FailedCheckIn(_client, callbackQuery);
-                        return;
-                    }
+        //            if (updatedPoll is null)
+        //            {
+        //                await FailedCheckIn(_client, callbackQuery);
+        //                return;
+        //            }
 
-                    await SyncPassPollInfoWithMessage(updatedPoll);
-                }
+        //            await SyncPassPollInfoWithMessage(updatedPoll);
+        //        }
 
-                await _client.AnswerCallbackQueryAsync(
-                    callbackQueryId: callbackQuery.Id,
-                    text: "You have checked in!");
-            }
-            else
-            {
-                await _client.AnswerCallbackQueryAsync(
-                    callbackQueryId: callbackQuery.Id,
-                    text: $"Your account is not linked to a Covid pass, please message @{_tgConfig.BotUsername} to link.");
-            }
-        }
+        //        await _client.AnswerCallbackQueryAsync(
+        //            callbackQueryId: callbackQuery.Id,
+        //            text: "You have checked in!");
+        //    }
+        //    else
+        //    {
+        //        await _client.AnswerCallbackQueryAsync(
+        //            callbackQueryId: callbackQuery.Id,
+        //            text: $"Your account is not linked to a Covid pass, please message @{_tgConfig.BotUsername} to link.");
+        //    }
+        //}
 
         protected enum PlanEventState
         {

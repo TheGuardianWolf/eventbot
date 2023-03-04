@@ -28,7 +28,7 @@ namespace EventBot.Repositories
                 throw new ArgumentException("Guid cannot be empty");
             }
 
-            var cursor = await _collection.FindAsync(c => c.EventUserId == EventUserId);
+            var cursor = await _collection.FindAsync(c => c.EventOwnerId == EventUserId);
             var entity = await cursor.FirstOrDefaultAsync();
 
             return entity;
@@ -41,7 +41,7 @@ namespace EventBot.Repositories
                 throw new ArgumentException("Guid cannot be empty");
             }
 
-            var cursor = await _collection.FindAsync(c => c.EventUserId == EventUserId);
+            var cursor = await _collection.FindAsync(c => c.EventOwnerId == EventUserId);
             var entities = await cursor.ToListAsync();
 
             return entities;
